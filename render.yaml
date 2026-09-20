@@ -1,0 +1,53 @@
+# Render Blueprint — a free Node web service.
+#
+# The free plan sleeps after ~15 minutes of inactivity. This app keeps sessions,
+# contexts and rounds in process memory, so a sleep logs everyone out and strands
+# any loaded playlist. The UI handles that: a stranded round says so and offers
+# "start over". Featured playlists reload instantly, since they are read from disk.
+#
+# Deploy: push this repo to GitHub, then New > Blueprint on render.com and point
+# it at the repo. Everything below is applied automatically except the two values
+# marked sync: false, which are entered once in the dashboard.
+
+services:
+  - type: web
+    name: songguessr
+    runtime: node
+    plan: free
+    region: oregon
+
+    # --include=dev is required: Render sets NODE_ENV=production, which would
+    # otherwise make npm skip the devDependencies that tsc and vite live in.
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+
+    healthCheckPath: /healthz
+
+    envVars:
+      # Signs the session cookie. Generated once and kept across deploys;
+      # changing it logs everyone out.
+      - key: SESSION_SECRET
+        generateValue: true
+
+      # Loopback is unreachable from outside the container.
+      - key: HOST
+        value: 0.0.0.0
+
+      # Render terminates TLS in front of the app, so per-IP rate limiting must
+      # read the forwarded address rather than the proxy's.
+      - key: TRUST_PROXY
+        value: "1"
+
+      # Must match the service's real URL, and each other: the session cookie is
+      # scoped by hostname, so a mismatch breaks the Spotify login.
+      - key: APP_URL
+        value: https://songguessr.onrender.com
+      - key: SPOTIFY_REDIRECT_URI
+        value: https://songguessr.onrender.com/callback
+
+      # Set in the dashboard, never in the repo. Without them the app still runs:
+      # genre, artist, album and featured modes do not need Spotify.
+      - key: SPOTIFY_CLIENT_ID
+        sync: false
+      - key: SPOTIFY_CLIENT_SECRET
+        sync: false

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.cache/
+*.log
+.DS_Store
+tsconfig.tsbuildinfo
+
+# The test suite is kept out of the public repo; it stays local. See README.
+test/
