@@ -6,6 +6,10 @@ import {
   fetchAuthStatus,
   fetchGenres,
   fetchMyPlaylists,
+  lockCurator,
+  removePreset,
+  unlockCurator,
+  type AppConfig,
   type AuthStatus,
   type Genre,
   type PlaylistSummary,
@@ -25,9 +29,12 @@ interface Props {
   onStart: (mode: ContextMode, value: string) => void;
   busy: boolean;
   error: string | null;
+  config: AppConfig;
+  /** Re-reads /config after unlocking or locking, so the save button follows suit. */
+  onConfigChange: () => void | Promise<void>;
 }
 
-export function Setup({ onStart, busy, error }: Props) {
+export function Setup({ onStart, busy, error, config, onConfigChange }: Props) {
   const [mode, setMode] = useState<ContextMode>('preset');
   const [presets, setPresets] = useState<Preset[]>([]);
   const [genres, setGenres] = useState<Genre[]>([]);
@@ -35,6 +42,9 @@ export function Setup({ onStart, busy, error }: Props) {
   const [playlistUrl, setPlaylistUrl] = useState('');
   const [mine, setMine] = useState<PlaylistSummary[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [password, setPassword] = useState('');
+  const [curatorError, setCuratorError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<string | null>(null);
 
   useEffect(() => {
     fetchPresets()
@@ -49,6 +59,29 @@ export function Setup({ onStart, busy, error }: Props) {
       .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'could not load genres'));
     void refreshAuth();
   }, []);
+
+  async function unlock() {
+    setCuratorError(null);
+    try {
+      await unlockCurator(password);
+      setPassword('');
+      await onConfigChange();
+    } catch (e: unknown) {
+      setCuratorError(e instanceof Error ? e.message : 'could not unlock');
+    }
+  }
+
+  async function remove(slug: string) {
+    setCuratorError(null);
+    try {
+      await removePreset(slug);
+      setPresets(await fetchPresets());
+    } catch (e: unknown) {
+      setCuratorError(e instanceof Error ? e.message : 'could not remove that playlist');
+    } finally {
+      setConfirming(null);
+    }
+  }
 
   async function refreshAuth() {
     try {
@@ -89,25 +122,80 @@ export function Setup({ onStart, busy, error }: Props) {
       </nav>
 
       {mode === 'preset' && (
-        <div className="genre-grid">
-          {presets.length === 0 ? (
-            <p className="notice">
-              No saved playlists yet. Load one in Playlist mode and save it from the game screen.
-            </p>
-          ) : (
-            presets.map((p) => (
-              <button
-                key={p.slug}
-                type="button"
-                disabled={busy}
-                onClick={() => onStart('preset', p.slug)}
-              >
-                {p.label}
-                <span className="preset-count">{p.trackCount} tracks</span>
-              </button>
-            ))
+        <>
+          <div className="genre-grid">
+            {presets.length === 0 ? (
+              <p className="notice">
+                No saved playlists yet. Load one in Playlist mode and save it from the game screen.
+              </p>
+            ) : (
+              presets.map((p) => (
+                <div key={p.slug} className="preset-cell">
+                  <button type="button" disabled={busy} onClick={() => onStart('preset', p.slug)}>
+                    {p.label}
+                    <span className="preset-count">{p.trackCount} tracks</span>
+                  </button>
+                  {/* Removal is irreversible — the snapshot file is deleted — so it asks first. */}
+                  {config.curator &&
+                    (confirming === p.slug ? (
+                      <span className="preset-confirm">
+                        <button type="button" className="link danger" onClick={() => void remove(p.slug)}>
+                          really remove
+                        </button>
+                        <button type="button" className="link" onClick={() => setConfirming(null)}>
+                          cancel
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="link preset-remove"
+                        title={`Remove "${p.label}" for everyone`}
+                        onClick={() => setConfirming(p.slug)}
+                      >
+                        remove
+                      </button>
+                    ))}
+                </div>
+              ))
+            )}
+          </div>
+
+          {config.presetWrites && (
+            <div className="curator-row">
+              {config.curator ? (
+                <>
+                  <span className="ok">✓ Curator unlocked — you can add and remove featured playlists</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void lockCurator().then(onConfigChange);
+                    }}
+                  >
+                    Lock
+                  </button>
+                </>
+              ) : (
+                <>
+                  <input
+                    type="password"
+                    value={password}
+                    placeholder="Curator password"
+                    autoComplete="current-password"
+                    onChange={(e) => setPassword(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && password) void unlock();
+                    }}
+                  />
+                  <button type="button" disabled={!password} onClick={() => void unlock()}>
+                    Unlock
+                  </button>
+                </>
+              )}
+            </div>
           )}
-        </div>
+          {curatorError && <p className="error">{curatorError}</p>}
+        </>
       )}
 
       {mode === 'genre' && (

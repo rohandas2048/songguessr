@@ -51,3 +51,11 @@ services:
         sync: false
       - key: SPOTIFY_CLIENT_SECRET
         sync: false
+
+      # Unlocks adding and removing featured playlists. Leave it unset to make the
+      # featured list read-only here and author it locally instead — which is the
+      # durable option, since this plan has no persistent disk: a playlist saved on
+      # the running service is lost at the next deploy or wake-up, while one committed
+      # to data/presets/ ships with the image.
+      - key: CURATOR_PASSWORD
+        sync: false

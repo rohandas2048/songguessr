@@ -105,6 +105,10 @@ settings=(
     "TRUST_PROXY=1"
     "SCM_DO_BUILD_DURING_DEPLOYMENT=true"
 )
+# Optional: without it the featured list is read-only on the deployed instance.
+if [ -n "${CURATOR_PASSWORD:-}" ]; then
+    settings+=("CURATOR_PASSWORD=$CURATOR_PASSWORD")
+fi
 if [ -n "${SPOTIFY_CLIENT_ID:-}" ] && [ -n "${SPOTIFY_CLIENT_SECRET:-}" ]; then
     settings+=("SPOTIFY_CLIENT_ID=$SPOTIFY_CLIENT_ID" "SPOTIFY_CLIENT_SECRET=$SPOTIFY_CLIENT_SECRET")
 else

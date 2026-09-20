@@ -55,11 +55,16 @@ if [ -n "${SPOTIFY_REDIRECT_URI:-}" ] && [ -n "$APP_URL" ]; then
     fi
 fi
 
-if [ "${ALLOW_PRESET_WRITES:-}" = "true" ]; then
-    bad "ALLOW_PRESET_WRITES=true lets any visitor write preset files"
-    note "leave it unset in production; author presets locally and commit them"
+if [ "${ALLOW_PRESET_WRITES:-}" = "false" ]; then
+    ok "featured-list editing is switched off"
+elif [ -z "${CURATOR_PASSWORD:-}" ]; then
+    ok "no CURATOR_PASSWORD — the featured list is read-only"
+elif [ "${#CURATOR_PASSWORD}" -lt 16 ]; then
+    bad "CURATOR_PASSWORD is ${#CURATOR_PASSWORD} chars; use 16 or more"
+    note "it is the only guessable secret in the app"
 else
-    ok "preset writes are disabled"
+    ok "CURATOR_PASSWORD is set and long enough"
+    note "presets written at runtime do not survive a restart unless the host has a disk"
 fi
 
 if [ "${HOST:-}" = "127.0.0.1" ]; then

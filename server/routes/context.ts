@@ -20,7 +20,8 @@ import {
   spotifyConfigured,
 } from '../spotify.ts';
 import { fetchPlaylistEmbed } from '../spotifyEmbed.ts';
-import { listPresets, loadPreset, presetWritesAllowed, savePreset } from '../presets.ts';
+import { checkCuratorPassword, curatorConfigured, requireCurator } from '../curator.ts';
+import { deletePreset, listPresets, loadPreset, presetWritesAllowed, savePreset } from '../presets.ts';
 import { sameOriginOnly } from '../security.ts';
 import { getContext, putContext } from '../store.ts';
 
@@ -39,8 +40,40 @@ contextRouter.get('/genres', async (_req, res, next) => {
   }
 });
 
-contextRouter.get('/config', (_req, res) => {
-  res.json({ spotify: spotifyConfigured(), presetWrites: presetWritesAllowed() });
+contextRouter.get('/config', (req, res) => {
+  res.json({
+    spotify: spotifyConfigured(),
+    presetWrites: presetWritesAllowed(),
+    // Whether *this* browser has unlocked; the UI shows its editing controls on it.
+    curator: req.session.curator,
+  });
+});
+
+/**
+ * Exchanges the curator password for a flag on this session.
+ *
+ * Rate limited hard in app.ts, since this is the one guessable credential in the app.
+ * The reply says nothing about why a password failed.
+ */
+contextRouter.post('/presets/unlock', sameOriginOnly, (req, res) => {
+  if (!curatorConfigured()) {
+    res.status(403).json({ error: 'no curator password is set on this server' });
+    return;
+  }
+  const { password } = req.body as { password?: string };
+  if (typeof password !== 'string' || !checkCuratorPassword(password)) {
+    // Drop any existing unlock: a wrong password should never leave one standing.
+    req.session.curator = false;
+    res.status(401).json({ error: 'wrong password' });
+    return;
+  }
+  req.session.curator = true;
+  res.json({ curator: true });
+});
+
+contextRouter.post('/presets/lock', sameOriginOnly, (req, res) => {
+  req.session.curator = false;
+  res.json({ curator: false });
 });
 
 /** Saved playlists, playable by anyone — no Spotify connection needed. */
@@ -54,9 +87,9 @@ contextRouter.get('/presets', async (_req, res, next) => {
 
 /**
  * Snapshots a context the caller has already built, so it can be replayed by everyone.
- * An authoring step: disabled in production, since it writes to disk.
+ * Curator-only: it changes what every visitor sees on the Featured tab.
  */
-contextRouter.post('/presets', sameOriginOnly, async (req, res, next) => {
+contextRouter.post('/presets', sameOriginOnly, requireCurator, async (req, res, next) => {
   if (!presetWritesAllowed()) {
     res.status(403).json({ error: 'saving playlists is disabled on this server' });
     return;
@@ -69,6 +102,25 @@ contextRouter.post('/presets', sameOriginOnly, async (req, res, next) => {
   }
   try {
     res.json(await savePreset(label?.trim() || ctx.label, ctx.tracks, ctx.clips, ctx.spotifyIds));
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Removes a featured playlist. Curator-only, for the same reason as saving one. */
+contextRouter.delete('/presets/:slug', sameOriginOnly, requireCurator, async (req, res, next) => {
+  if (!presetWritesAllowed()) {
+    res.status(403).json({ error: 'editing playlists is disabled on this server' });
+    return;
+  }
+  const slug = String(req.params.slug);
+  try {
+    const removed = await deletePreset(slug);
+    if (!removed) {
+      res.status(404).json({ error: 'no featured playlist by that name' });
+      return;
+    }
+    res.json({ removed: slug });
   } catch (err) {
     next(err);
   }

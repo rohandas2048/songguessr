@@ -38,6 +38,9 @@ export function createApp(): Express {
   // worth protecting from a loop: it is both the slowest and the easiest to abuse.
   app.use('/api/context', rateLimit({ capacity: 10, refillPerSec: 0.2, name: 'context' }));
   app.use('/api/auth/login', rateLimit({ capacity: 10, refillPerSec: 0.5, name: 'login' }));
+  // The curator password is the only guessable secret in the app, so its check is the
+  // slowest route on purpose: five tries, then one every twenty seconds.
+  app.use('/api/presets/unlock', rateLimit({ capacity: 5, refillPerSec: 0.05, name: 'unlock' }));
   app.use('/api', rateLimit({ capacity: 120, refillPerSec: 10, name: 'api' }));
 
   // Liveness for the platform's health probe: no dependencies, no side effects.

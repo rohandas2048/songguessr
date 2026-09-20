@@ -30,6 +30,8 @@ export interface Session {
    * from "this state is stale or forged", which need different explanations.
    */
   issuedAnyState: boolean;
+  /** Whether this browser has presented the curator password. Grants featured-list writes. */
+  curator: boolean;
   lastSeen: number;
 }
 
@@ -100,6 +102,7 @@ export function sessionMiddleware(req: Request, res: Response, next: NextFunctio
       token: null,
       pendingStates: new Map(),
       issuedAnyState: false,
+      curator: false,
       lastSeen: Date.now(),
     };
     sessions.set(fresh, session);

@@ -211,15 +211,37 @@ Snapshots are durable because of how clips are stored: a Deezer clip keeps only 
 (its preview URLs are signed and expire in ~14 minutes, so they are re-resolved at play
 time), while Spotify and iTunes previews are unsigned URLs that stay valid.
 
-To create one: load the playlist as usual — connected, if it runs past 100 tracks — then
-click **save as featured** in the game header. Commit the resulting JSON and it ships with
-the app.
+### Curating the featured list
 
-**Writing is an authoring step, not a feature of a deployed instance.** `POST /api/presets`
-is refused when `NODE_ENV=production` unless `ALLOW_PRESET_WRITES=true` is set explicitly,
-and the button is hidden when the server reports it is disabled. Reading presets is always
-public. Slugs are restricted to letters, digits and hyphens, so a label can never escape the
-preset directory.
+Editing the list is gated on one shared secret, `CURATOR_PASSWORD`. It is not a user
+account: there is exactly one curator, whoever runs the instance.
+
+1. Set `CURATOR_PASSWORD` in `.env` (or in the host's dashboard). **With it unset the
+   featured list is read-only for everyone, in development too** — there is no code path
+   that writes a preset without a password.
+2. On the **Featured** tab, type it into the unlock box. The check happens once and the
+   result lives on the session cookie, so the password crosses the wire a single time per
+   browser. **Lock** clears it.
+3. Unlocked, you get **save as featured** in the game header (load the playlist first —
+   connected, if it runs past 100 tracks) and a **remove** link under each featured tile.
+   Removal deletes the snapshot file, so it asks for confirmation.
+
+Commit the resulting JSON if you want it to ship with the app. That matters on a host with
+no persistent disk, such as Render's free plan: a preset saved on the running service is
+gone at the next deploy or wake-up, while one committed to `data/presets/` is in the image.
+
+What holds the gate up:
+
+- `POST /api/presets` and `DELETE /api/presets/:slug` both require the session flag, and
+  both also require `sameOriginOnly`. Reading presets is always public.
+- The password is compared as a SHA-256 digest through `timingSafeEqual`, so neither its
+  content nor its length leaks through timing.
+- `/api/presets/unlock` is the slowest route in the app — five attempts per IP, then one
+  every twenty seconds — and a wrong password clears any unlock already on that session.
+- The flag is per session, so unlocking one browser unlocks nothing for anyone else.
+- `ALLOW_PRESET_WRITES=false` switches the whole feature off regardless of the password.
+- Slugs are restricted to letters, digits and hyphens, so neither a saved label nor a
+  requested removal can escape the preset directory.
 
 ## Tests
 
@@ -240,7 +262,8 @@ Spotify account**. That was checked by mutation: reintroducing the old shared-to
 fails 6 of the 9 isolation tests, so they have teeth rather than merely passing. Coverage:
 per-session tokens, cookie flags, forged cookies, OAuth state binding and replay,
 session-scoped contexts and rounds, minimal OAuth scope, preset slug safety and path-traversal
-refusal, production write gating, cross-origin logout, security headers, rate limiting, SSRF
+refusal, the curator password gate (wrong passwords, non-string passwords, cross-origin
+unlocks, brute-force throttling, per-session isolation of the unlock), cross-origin logout, security headers, rate limiting, SSRF
 pinning, error sanitization, eviction, and the guess box across Mandarin, Cyrillic, Hangul,
 Japanese kana and full-width Latin.
 

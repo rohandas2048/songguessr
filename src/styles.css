@@ -91,6 +91,28 @@ button.link:hover { background: none; color: var(--text); }
 .genre-grid button { text-align: left; }
 .preset-count { display: block; margin-top: 2px; font-size: 11px; color: var(--faint); }
 
+/* A featured cell is the play button plus, for a curator, its own remove control. */
+.preset-cell { display: flex; flex-direction: column; gap: 4px; }
+.preset-cell > button:first-child { width: 100%; text-align: left; }
+.preset-remove, .preset-confirm { align-self: flex-end; font-size: 11px; }
+.preset-confirm { display: flex; gap: 10px; }
+button.link.danger { color: var(--miss); }
+button.link.danger:hover { color: var(--miss); font-weight: bold; }
+
+/* ---- curator ---- */
+
+.curator-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule);
+  flex-wrap: wrap;
+}
+.curator-row .ok { font-size: 12px; color: var(--hit); font-weight: bold; }
+.curator-row input { min-width: 200px; }
+
 /* ---- game header ---- */
 
 .game header {

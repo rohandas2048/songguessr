@@ -1,7 +1,8 @@
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Preset, Track } from '@shared/types.ts';
 import type { ClipSource } from './clips.ts';
+import { curatorConfigured } from './curator.ts';
 import { BadInputError } from './errors.ts';
 
 /**
@@ -13,11 +14,18 @@ import { BadInputError } from './errors.ts';
  */
 const PRESET_DIR = process.env.PRESET_DIR ?? 'data/presets';
 
-/** Writing is a local authoring step, never something a deployed instance offers. */
+/**
+ * Whether this server offers featured-list editing at all — separate from whether the
+ * caller is allowed to do it, which `requireCurator` decides.
+ *
+ * A password is required unconditionally, in development too. The alternative (open in
+ * dev, closed in production) reads as convenient but leaves one flag between a deploy and
+ * a featured list any visitor can rewrite, so there is no path here that writes without
+ * a secret. ALLOW_PRESET_WRITES=false still turns the whole feature off.
+ */
 export function presetWritesAllowed(): boolean {
-  if (process.env.ALLOW_PRESET_WRITES === 'true') return true;
   if (process.env.ALLOW_PRESET_WRITES === 'false') return false;
-  return process.env.NODE_ENV !== 'production';
+  return curatorConfigured();
 }
 
 interface StoredPreset {
@@ -114,4 +122,15 @@ export async function savePreset(
   await mkdir(PRESET_DIR, { recursive: true });
   await writeFile(join(PRESET_DIR, `${slug}.json`), JSON.stringify(stored, null, 2));
   return { slug, label, trackCount: tracks.length, savedAt: stored.savedAt };
+}
+
+/** Removes a saved snapshot. Idempotent: removing an absent preset is not an error. */
+export async function deletePreset(slug: string): Promise<boolean> {
+  assertSafeSlug(slug);
+  try {
+    await unlink(join(PRESET_DIR, `${slug}.json`));
+    return true;
+  } catch {
+    return false;
+  }
 }

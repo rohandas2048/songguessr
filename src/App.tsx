@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ContextMode, ContextResponse, Track } from '@shared/types.ts';
-import { buildContext, fetchConfig, savePreset } from './api.ts';
+import { buildContext, fetchConfig, savePreset, type AppConfig } from './api.ts';
 import { GuessInput } from './components/GuessInput.tsx';
 import { Ladder } from './components/Ladder.tsx';
 import { Setup } from './components/Setup.tsx';
@@ -10,7 +10,7 @@ export function App() {
   const [context, setContext] = useState<ContextResponse | null>(null);
   const [building, setBuilding] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
-  const [canSavePreset, setCanSavePreset] = useState(false);
+  const [config, setConfig] = useState<AppConfig>({ spotify: true, presetWrites: false, curator: false });
   const [saved, setSaved] = useState<string | null>(null);
   const [trimSilence, setTrimSilence] = useState(true);
   const [randomStart, setRandomStart] = useState(false);
@@ -31,11 +31,17 @@ export function App() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchConfig()
-      .then((c) => setCanSavePreset(c.presetWrites))
-      .catch(() => setCanSavePreset(false));
+  const refreshConfig = useCallback(async () => {
+    try {
+      setConfig(await fetchConfig());
+    } catch {
+      setConfig({ spotify: false, presetWrites: false, curator: false });
+    }
   }, []);
+
+  useEffect(() => {
+    void refreshConfig();
+  }, [refreshConfig]);
 
   // A fresh context immediately deals a round.
   useEffect(() => {
@@ -57,7 +63,17 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [replay]);
 
-  if (!context) return <Setup onStart={start} busy={building} error={setupError} />;
+  if (!context) {
+    return (
+      <Setup
+        onStart={start}
+        busy={building}
+        error={setupError}
+        config={config}
+        onConfigChange={refreshConfig}
+      />
+    );
+  }
 
   const { phase, ladder, rung, attempts, answer, won, busy } = state;
   const seconds = ladder[Math.min(rung, ladder.length - 1)];
@@ -83,8 +99,8 @@ export function App() {
           <input type="checkbox" checked={randomStart} onChange={(e) => setRandomStart(e.target.checked)} />
           random start
         </label>
-        {/* Authoring only: the server disables preset writes in production. */}
-        {canSavePreset && (
+        {/* Curator only: the featured list is what every visitor sees. Unlock on that tab. */}
+        {config.presetWrites && config.curator && (
           <button
             type="button"
             className="link"

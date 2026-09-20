@@ -35,8 +35,10 @@ export async function fetchGenres(): Promise<Genre[]> {
 
 export interface AppConfig {
   spotify: boolean;
-  /** Whether this server allows saving a loaded playlist as a preset. Off in production. */
+  /** Whether this server offers featured-list editing at all — needs a curator password set. */
   presetWrites: boolean;
+  /** Whether this browser has already unlocked with that password. */
+  curator: boolean;
 }
 
 export async function fetchConfig(): Promise<AppConfig> {
@@ -49,6 +51,19 @@ export async function fetchPresets(): Promise<Preset[]> {
 
 export async function savePreset(contextId: string, label?: string): Promise<Preset> {
   return post<Preset>('/api/presets', { contextId, label });
+}
+
+export async function removePreset(slug: string): Promise<void> {
+  await unwrap(await fetch(`/api/presets/${encodeURIComponent(slug)}`, { method: 'DELETE' }));
+}
+
+/** Trades the curator password for a flag on the session cookie. Throws on a wrong one. */
+export async function unlockCurator(password: string): Promise<void> {
+  await post('/api/presets/unlock', { password });
+}
+
+export async function lockCurator(): Promise<void> {
+  await post('/api/presets/lock', {});
 }
 
 export interface AuthStatus {
