@@ -2,14 +2,12 @@
 import './env.ts';
 
 import { createApp } from './app.ts';
-import { warnWeakCuratorPassword } from './curator.ts';
 import { assertSessionConfig } from './session.ts';
 import { redirectUri } from './auth.ts';
 
 // Fail at boot rather than serving 500s: a production deploy without a stable
 // SESSION_SECRET would log everyone out on every restart.
 assertSessionConfig();
-warnWeakCuratorPassword();
 
 // The session cookie is scoped by hostname, so a login started on one host and returned to
 // another loses it. Cheap to misconfigure, confusing to debug, so it is checked at boot.

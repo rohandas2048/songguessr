@@ -9,9 +9,13 @@ import type { NextFunction, Request, Response } from 'express';
  * instance — so a shared secret in the environment is the whole model. It is checked
  * once and the result lives on the session, so the password crosses the wire a single
  * time per browser rather than on every write.
+ *
+ * Any length is accepted, deliberately. The throttle on /api/presets/unlock is what makes
+ * that reasonable: five tries per IP, then one every twenty seconds, so even a four-digit
+ * password takes days of uninterrupted guessing. The worst case is someone editing a list
+ * of playlists, which is annoying rather than dangerous — the password guards nothing
+ * else, reaches no Spotify account, and reads nothing private.
  */
-
-const MIN_LENGTH = 12;
 
 export function curatorConfigured(): boolean {
   return (process.env.CURATOR_PASSWORD ?? '').length > 0;
@@ -28,17 +32,6 @@ export function checkCuratorPassword(supplied: string): boolean {
   const a = createHash('sha256').update(supplied, 'utf8').digest();
   const b = createHash('sha256').update(expected, 'utf8').digest();
   return timingSafeEqual(a, b);
-}
-
-/** Boot warning: a short password is brute-forceable despite the rate limit. */
-export function warnWeakCuratorPassword(): void {
-  const pw = process.env.CURATOR_PASSWORD ?? '';
-  if (pw && pw.length < MIN_LENGTH) {
-    console.warn(
-      `warning: CURATOR_PASSWORD is ${pw.length} characters. Use ${MIN_LENGTH}+ — it is the only\n` +
-        '         thing standing between a visitor and the featured list.',
-    );
-  }
 }
 
 /** Gate for every route that changes the featured list. */

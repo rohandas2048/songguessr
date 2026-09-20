@@ -218,7 +218,9 @@ account: there is exactly one curator, whoever runs the instance.
 
 1. Set `CURATOR_PASSWORD` in `.env` (or in the host's dashboard). **With it unset the
    featured list is read-only for everyone, in development too** — there is no code path
-   that writes a preset without a password.
+   that writes a preset without a password. Any length is fine: guessing is throttled to
+   five tries per IP then one every twenty seconds, and the password guards nothing but
+   this list — no Spotify account, nothing private.
 2. On the **Featured** tab, type it into the unlock box. The check happens once and the
    result lives on the session cookie, so the password crosses the wire a single time per
    browser. **Lock** clears it.
@@ -238,6 +240,8 @@ What holds the gate up:
   content nor its length leaks through timing.
 - `/api/presets/unlock` is the slowest route in the app — five attempts per IP, then one
   every twenty seconds — and a wrong password clears any unlock already on that session.
+  The throttle is what makes a short password workable: even four digits is days of
+  uninterrupted guessing.
 - The flag is per session, so unlocking one browser unlocks nothing for anyone else.
 - `ALLOW_PRESET_WRITES=false` switches the whole feature off regardless of the password.
 - Slugs are restricted to letters, digits and hyphens, so neither a saved label nor a

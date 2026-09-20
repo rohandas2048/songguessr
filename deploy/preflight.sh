@@ -59,11 +59,11 @@ if [ "${ALLOW_PRESET_WRITES:-}" = "false" ]; then
     ok "featured-list editing is switched off"
 elif [ -z "${CURATOR_PASSWORD:-}" ]; then
     ok "no CURATOR_PASSWORD — the featured list is read-only"
-elif [ "${#CURATOR_PASSWORD}" -lt 16 ]; then
-    bad "CURATOR_PASSWORD is ${#CURATOR_PASSWORD} chars; use 16 or more"
-    note "it is the only guessable secret in the app"
 else
-    ok "CURATOR_PASSWORD is set and long enough"
+    ok "CURATOR_PASSWORD is set — the featured list is editable after unlocking"
+    if [ "${#CURATOR_PASSWORD}" -lt 12 ]; then
+        note "short, but unlock is throttled to 5 tries then 1 per 20s, and it guards only this list"
+    fi
     note "presets written at runtime do not survive a restart unless the host has a disk"
 fi
 
