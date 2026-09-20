@@ -8,3 +8,9 @@ tsconfig.tsbuildinfo
 
 # The test suite is kept out of the public repo; it stays local. See README.
 test/
+
+# Editor swap and backup files. A .env.swp holds the contents of .env.
+*.sw[a-p]
+*~
+*.bak
+*.orig
