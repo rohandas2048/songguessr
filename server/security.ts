@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
+import { publicOrigin } from './publicUrl.ts';
 
 /**
  * Rejects state-changing requests that did not originate from this site.
@@ -19,7 +20,8 @@ export function sameOriginOnly(req: Request, res: Response, next: NextFunction):
     allowed.add(`http://${host}`);
     allowed.add(`https://${host}`);
   }
-  if (process.env.APP_URL) allowed.add(process.env.APP_URL.replace(/\/$/, ''));
+  const appOrigin = publicOrigin();
+  if (appOrigin) allowed.add(appOrigin);
   // Vite's dev origin proxies to this server and is same-site in practice.
   if (process.env.NODE_ENV !== 'production') {
     allowed.add('http://localhost:5173');

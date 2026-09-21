@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { publicOrigin } from './publicUrl.ts';
 import type { Session, StoredToken } from './session.ts';
 
 const AUTH_URL = 'https://accounts.spotify.com/authorize';
@@ -19,7 +20,12 @@ const STATE_TTL_MS = 10 * 60 * 1000;
 
 export function redirectUri(): string {
   // Must match the app's registered URI exactly. Spotify rejects `localhost` over http.
-  return process.env.SPOTIFY_REDIRECT_URI ?? `http://127.0.0.1:${process.env.PORT ?? 3000}/callback`;
+  if (process.env.SPOTIFY_REDIRECT_URI) return process.env.SPOTIFY_REDIRECT_URI;
+  // Derived from wherever this instance actually answers, so a deploy cannot drift out
+  // of agreement with itself. Only the Spotify dashboard still needs it typed by hand.
+  const origin = publicOrigin();
+  if (origin) return `${origin}/callback`;
+  return `http://127.0.0.1:${process.env.PORT ?? 3000}/callback`;
 }
 
 function basicAuth(): string {

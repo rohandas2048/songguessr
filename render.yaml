@@ -38,12 +38,12 @@ services:
       - key: TRUST_PROXY
         value: "1"
 
-      # Must match the service's real URL, and each other: the session cookie is
-      # scoped by hostname, so a mismatch breaks the Spotify login.
-      - key: APP_URL
-        value: https://songguessr.onrender.com
-      - key: SPOTIFY_REDIRECT_URI
-        value: https://songguessr.onrender.com/callback
+      # APP_URL and SPOTIFY_REDIRECT_URI are deliberately absent. Render assigns the
+      # real hostname (songguessr-7s7h.onrender.com, say, not the service name), and a
+      # guess written here would break the Spotify login: the session cookie is scoped
+      # by hostname, so the OAuth round trip would return somewhere the cookie is not
+      # sent. The app reads Render's own RENDER_EXTERNAL_URL instead. Set APP_URL only
+      # to override that, such as behind a custom domain.
 
       # Set in the dashboard, never in the repo. Without them the app still runs:
       # genre, artist, album and featured modes do not need Spotify.

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { exchangeCode, isConnected, loginUrl, logout, redirectUri, userToken } from '../auth.ts';
+import { publicOrigin } from '../publicUrl.ts';
 import { listMyPlaylists, spotifyConfigured } from '../spotify.ts';
 import { sameOriginOnly } from '../security.ts';
 
@@ -7,7 +8,7 @@ export const authRouter = Router();
 
 /** Where to send the browser after the OAuth round trip. Vite serves the UI on another port in dev. */
 function appUrl(): string {
-  return process.env.APP_URL ?? (process.env.NODE_ENV === 'production' ? '/' : 'http://localhost:5173');
+  return publicOrigin() ?? (process.env.NODE_ENV === 'production' ? '/' : 'http://localhost:5173');
 }
 
 authRouter.get('/api/auth/status', async (req, res) => {

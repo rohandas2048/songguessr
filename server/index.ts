@@ -2,6 +2,7 @@
 import './env.ts';
 
 import { createApp } from './app.ts';
+import { publicOrigin } from './publicUrl.ts';
 import { assertSessionConfig } from './session.ts';
 import { redirectUri } from './auth.ts';
 
@@ -11,7 +12,8 @@ assertSessionConfig();
 
 // The session cookie is scoped by hostname, so a login started on one host and returned to
 // another loses it. Cheap to misconfigure, confusing to debug, so it is checked at boot.
-const appHost = process.env.APP_URL ? new URL(process.env.APP_URL).hostname : null;
+const origin = publicOrigin();
+const appHost = origin ? new URL(origin).hostname : null;
 const callbackHost = new URL(redirectUri()).hostname;
 if (appHost && appHost !== callbackHost) {
   console.warn(
