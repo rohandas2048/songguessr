@@ -1,15 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { ContextMode } from '@shared/types.ts';
 import {
-  addFeaturedArtist,
-  fetchFeaturedArtists,
   fetchPresets,
   disconnectSpotify,
   fetchAuthStatus,
   fetchGenres,
   fetchMyPlaylists,
   lockCurator,
-  removeFeaturedArtist,
   removePreset,
   unlockCurator,
   type AppConfig,
@@ -17,7 +14,7 @@ import {
   type Genre,
   type PlaylistSummary,
 } from '../api.ts';
-import type { FeaturedArtist, Preset } from '@shared/types.ts';
+import type { Preset } from '@shared/types.ts';
 import { EntitySearch } from './EntitySearch.tsx';
 
 const MODES: { id: ContextMode; label: string }[] = [
@@ -45,9 +42,6 @@ export function Setup({ onStart, busy, error, config, onConfigChange }: Props) {
   const [playlistUrl, setPlaylistUrl] = useState('');
   const [mine, setMine] = useState<PlaylistSummary[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [artists, setArtists] = useState<FeaturedArtist[]>([]);
-  /** Which half of the Featured tab is showing. */
-  const [featuredTab, setFeaturedTab] = useState<'playlists' | 'artists'>('playlists');
   /** Artist mode: the 100 most popular tracks, or the whole discography. */
   const [artistDepth, setArtistDepth] = useState<'top' | 'all'>('top');
   const [password, setPassword] = useState('');
@@ -55,15 +49,13 @@ export function Setup({ onStart, busy, error, config, onConfigChange }: Props) {
   const [confirming, setConfirming] = useState<string | null>(null);
 
   useEffect(() => {
-    void Promise.all([fetchPresets().catch(() => []), fetchFeaturedArtists().catch(() => [])]).then(
-      ([p, a]) => {
+    fetchPresets()
+      .then((p) => {
         setPresets(p);
-        setArtists(a);
-        // Nothing curated yet: land on a tab that has something in it.
-        if (p.length === 0 && a.length === 0) setMode('genre');
-        else if (p.length === 0) setFeaturedTab('artists');
-      },
-    );
+        // Nothing saved yet: land on a tab that has something in it.
+        if (p.length === 0) setMode('genre');
+      })
+      .catch(() => setMode('genre'));
     fetchGenres()
       .then(setGenres)
       .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'could not load genres'));
@@ -78,28 +70,6 @@ export function Setup({ onStart, busy, error, config, onConfigChange }: Props) {
       await onConfigChange();
     } catch (e: unknown) {
       setCuratorError(e instanceof Error ? e.message : 'could not unlock');
-    }
-  }
-
-  async function feature(artistId: string) {
-    setCuratorError(null);
-    try {
-      setArtists(await addFeaturedArtist(artistId, artistDepth));
-      setMode('preset');
-      setFeaturedTab('artists');
-    } catch (e: unknown) {
-      setCuratorError(e instanceof Error ? e.message : 'could not add that artist');
-    }
-  }
-
-  async function unfeature(artistId: string) {
-    setCuratorError(null);
-    try {
-      setArtists(await removeFeaturedArtist(artistId));
-    } catch (e: unknown) {
-      setCuratorError(e instanceof Error ? e.message : 'could not remove that artist');
-    } finally {
-      setConfirming(null);
     }
   }
 
@@ -155,69 +125,6 @@ export function Setup({ onStart, busy, error, config, onConfigChange }: Props) {
 
       {mode === 'preset' && (
         <>
-          <nav className="subtabs">
-            <button
-              type="button"
-              className={featuredTab === 'playlists' ? 'active' : ''}
-              onClick={() => setFeaturedTab('playlists')}
-            >
-              Playlists{presets.length > 0 && ` (${presets.length})`}
-            </button>
-            <button
-              type="button"
-              className={featuredTab === 'artists' ? 'active' : ''}
-              onClick={() => setFeaturedTab('artists')}
-            >
-              Artists{artists.length > 0 && ` (${artists.length})`}
-            </button>
-          </nav>
-
-          {featuredTab === 'artists' && (
-            <div className="genre-grid">
-              {artists.length === 0 ? (
-                <p className="notice">
-                  No featured artists yet. Unlock below, then add one from the Artist tab.
-                </p>
-              ) : (
-                artists.map((a) => (
-                  <div key={a.id} className="preset-cell">
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => onStart('artist', a.id, a.depth)}
-                    >
-                      {a.name}
-                      <span className="preset-count">
-                        {a.depth === 'all' ? 'full discography' : 'top tracks'}
-                      </span>
-                    </button>
-                    {config.curator &&
-                      (confirming === `artist:${a.id}` ? (
-                        <span className="preset-confirm">
-                          <button type="button" className="link danger" onClick={() => void unfeature(a.id)}>
-                            really remove
-                          </button>
-                          <button type="button" className="link" onClick={() => setConfirming(null)}>
-                            cancel
-                          </button>
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          className="link preset-remove"
-                          title={`Remove ${a.name} from the Featured tab`}
-                          onClick={() => setConfirming(`artist:${a.id}`)}
-                        >
-                          remove
-                        </button>
-                      ))}
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-
-          {featuredTab === 'playlists' && (
           <div className="genre-grid">
             {presets.length === 0 ? (
               <p className="notice">
@@ -255,7 +162,6 @@ export function Setup({ onStart, busy, error, config, onConfigChange }: Props) {
               ))
             )}
           </div>
-          )}
 
           {config.presetWrites && (
             <div className="curator-row">
@@ -309,7 +215,6 @@ export function Setup({ onStart, busy, error, config, onConfigChange }: Props) {
           type={mode}
           busy={busy}
           onPick={(value) => onStart(mode, value, mode === 'artist' ? artistDepth : undefined)}
-          onFeature={mode === 'artist' && config.curator ? (id) => void feature(id) : undefined}
         >
           {mode === 'artist' && (
             <label className="toggle depth-toggle" title="Walks the artist's albums instead of their top 100">

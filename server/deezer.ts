@@ -80,6 +80,16 @@ function toTrack(t: DzTrack): Track {
 
 const genreCache = new MemoCache<DzGenre[]>(24 * 60 * 60 * 1000);
 const chartCache = new MemoCache<Track[]>(60 * 60 * 1000);
+/**
+ * A discography walk costs dozens of paced requests, so it is paid once and then reused:
+ * playing the same artist again, or a second player picking them, is instant. A
+ * catalogue changes on the timescale of album releases, so a long TTL is honest.
+ */
+const catalogCache = new MemoCache<{ name: string; tracks: Track[] }>(12 * 60 * 60 * 1000);
+const topCache = new MemoCache<{ name: string; tracks: Track[] }>(6 * 60 * 60 * 1000);
+/** Follower counts, used to rank album search. Cached hard: they barely move, and an
+ *  album search would otherwise spend a request per distinct artist on every keystroke. */
+const fanCache = new MemoCache<number>(24 * 60 * 60 * 1000);
 
 /** The "All" pseudo-genre (id 0) is dropped — it isn't a real category to play. */
 export function listGenres(): Promise<DzGenre[]> {
@@ -111,14 +121,23 @@ export interface DzEntity {
   /** Artist name for albums; undefined for artists. */
   subtitle?: string;
   pictureUrl: string | null;
+  /** Deezer's follower count, for artists. Rendered as a hint at who is meant. */
+  fans?: number;
 }
 
-interface DzArtist { id: number; name: string; picture_medium?: string | null; nb_album?: number }
+interface DzArtist {
+  id: number;
+  name: string;
+  picture_medium?: string | null;
+  nb_album?: number;
+  /** Follower count. The only popularity signal Deezer exposes on a search result. */
+  nb_fan?: number;
+}
 interface DzAlbum {
   id: number;
   title: string;
   cover_medium?: string | null;
-  artist?: { name: string };
+  artist?: { id?: number; name: string };
   tracks?: { data: DzTrack[] };
   /** 'album' | 'ep' | 'single' | 'compilation' on the artist-albums endpoint. */
   record_type?: string;
@@ -129,38 +148,105 @@ function encode(q: string): string {
   return encodeURIComponent(q.trim());
 }
 
-/** One artist by id, for storing a featured entry from Deezer's answer rather than the caller's. */
-export async function getArtist(artistId: string): Promise<DzEntity | null> {
-  try {
-    const a = await dz<DzArtist>(`/artist/${artistId}`);
-    return { id: a.id, name: a.name, pictureUrl: a.picture_medium ?? null };
-  } catch {
-    return null;
-  }
+/**
+ * How well a name answers the query: exact, then prefix, then contains, then the rest.
+ * Kept coarse on purpose — it sorts results into tiers, and popularity breaks the ties.
+ */
+function nameTier(name: string, q: string): number {
+  const n = name.toLowerCase().trim();
+  const needle = q.toLowerCase().trim();
+  if (n === needle) return 0;
+  if (n.startsWith(needle)) return 1;
+  if (n.includes(needle)) return 2;
+  return 3;
 }
 
+/**
+ * Artist search, ranked by follower count within each name-match tier.
+ *
+ * Deezer's own ordering is close to useless for common names: searching "Drake" returns
+ * artists with 100, 160 and 9 followers before the Drake with 24 million, and the API's
+ * documented `order=RANKING` parameter changes nothing. So results are over-fetched and
+ * re-ranked here. Tier first, so searching a niche artist by their full name still finds
+ * them rather than burying them under a famous near-match.
+ */
 export async function searchArtists(q: string, limit = 8): Promise<DzEntity[]> {
-  const { data } = await dz<{ data: DzArtist[] }>(`/search/artist?q=${encode(q)}&limit=${limit}`);
-  return data.map((a) => ({ id: a.id, name: a.name, pictureUrl: a.picture_medium ?? null }));
+  const { data } = await dz<{ data: DzArtist[] }>(
+    `/search/artist?q=${encode(q)}&limit=${Math.min(limit * 4, 40)}`,
+  );
+  return data
+    .map((a) => ({
+      id: a.id,
+      name: a.name,
+      pictureUrl: a.picture_medium ?? null,
+      fans: a.nb_fan ?? 0,
+    }))
+    .sort((a, b) => nameTier(a.name, q) - nameTier(b.name, q) || (b.fans ?? 0) - (a.fans ?? 0))
+    .slice(0, limit);
 }
 
+/** Follower count for one artist, cached. 0 when Deezer will not say. */
+function artistFans(artistId: number): Promise<number> {
+  return fanCache.wrap(`fans:${artistId}`, async () => {
+    try {
+      return (await dz<DzArtist>(`/artist/${artistId}`)).nb_fan ?? 0;
+    } catch {
+      return 0;
+    }
+  });
+}
+
+/**
+ * Album search, ranked by how well known the *artist* is.
+ *
+ * Deezer puts no popularity on an album, and title matching alone actively misleads here:
+ * ranking an exact title first pushes Kölsch's "1989" above Taylor Swift's, because hers
+ * is titled "1989 (Taylor's Version)". Whose album it is settles it, so the distinct
+ * artists among the results are looked up — a handful of cached requests — and their
+ * follower counts do the ranking.
+ */
 export async function searchAlbums(q: string, limit = 8): Promise<DzEntity[]> {
-  const { data } = await dz<{ data: DzAlbum[] }>(`/search/album?q=${encode(q)}&limit=${limit}`);
-  return data.map((a) => ({
-    id: a.id,
-    name: a.title,
-    subtitle: a.artist?.name,
-    pictureUrl: a.cover_medium ?? null,
-  }));
+  const { data } = await dz<{ data: DzAlbum[] }>(
+    `/search/album?q=${encode(q)}&limit=${Math.min(limit * 3, 24)}`,
+  );
+
+  // Bounded: one request per distinct artist, and only for the ones that could place.
+  const ids = [...new Set(data.map((a) => a.artist?.id).filter((id): id is number => !!id))].slice(0, 12);
+  const fans = new Map(await Promise.all(ids.map(async (id) => [id, await artistFans(id)] as const)));
+
+  const typeRank = (a: DzAlbum) =>
+    ({ album: 0, ep: 1, compilation: 2, single: 3 })[a.record_type ?? 'album'] ?? 2;
+
+  return data
+    .map((a, i) => ({ a, i }))
+    .sort(
+      (x, y) =>
+        (fans.get(y.a.artist?.id ?? -1) ?? 0) - (fans.get(x.a.artist?.id ?? -1) ?? 0) ||
+        // Within one artist: the album proper ahead of its singles and compilations,
+        // then the plainest edition — "Rumours" before "Rumours (Super Deluxe)" — and
+        // finally Deezer's own order, which is at least relevance-shaped.
+        typeRank(x.a) - typeRank(y.a) ||
+        x.a.title.length - y.a.title.length ||
+        x.i - y.i,
+    )
+    .slice(0, limit)
+    .map(({ a }) => ({
+      id: a.id,
+      name: a.title,
+      subtitle: a.artist?.name,
+      pictureUrl: a.cover_medium ?? null,
+    }));
 }
 
 /** Deezer's /artist/{id}/top is the replacement for Spotify's 403-ing top-tracks. */
-export async function artistTopTracks(artistId: string, limit = 100): Promise<{ name: string; tracks: Track[] }> {
-  const [artist, top] = await Promise.all([
-    dz<DzArtist>(`/artist/${artistId}`),
-    dz<{ data: DzTrack[] }>(`/artist/${artistId}/top?limit=${limit}`),
-  ]);
-  return { name: artist.name, tracks: top.data.filter((t) => t.preview).map(toTrack) };
+export function artistTopTracks(artistId: string, limit = 100): Promise<{ name: string; tracks: Track[] }> {
+  return topCache.wrap(`top:${artistId}:${limit}`, async () => {
+    const [artist, top] = await Promise.all([
+      dz<DzArtist>(`/artist/${artistId}`),
+      dz<{ data: DzTrack[] }>(`/artist/${artistId}/top?limit=${limit}`),
+    ]);
+    return { name: artist.name, tracks: top.data.filter((t) => t.preview).map(toTrack) };
+  });
 }
 
 /**
@@ -196,9 +282,20 @@ function songKey(title: string): string {
     .replace(/[^\p{L}\p{N}]/gu, '');
 }
 
-export async function artistCatalog(
+export function artistCatalog(
   artistId: string,
-  { maxAlbums = 60, maxTracks = 500 } = {},
+  opts: { maxAlbums?: number; maxTracks?: number } = {},
+): Promise<{ name: string; tracks: Track[] }> {
+  const { maxAlbums = 60, maxTracks = 500 } = opts;
+  return catalogCache.wrap(`catalog:${artistId}:${maxAlbums}:${maxTracks}`, () =>
+    walkCatalog(artistId, maxAlbums, maxTracks),
+  );
+}
+
+async function walkCatalog(
+  artistId: string,
+  maxAlbums: number,
+  maxTracks: number,
 ): Promise<{ name: string; tracks: Track[] }> {
   const [artist, albums] = await Promise.all([
     dz<DzArtist>(`/artist/${artistId}`),

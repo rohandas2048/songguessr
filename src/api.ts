@@ -1,7 +1,6 @@
 import type {
   ContextRequest,
   ContextResponse,
-  FeaturedArtist,
   GuessResponse,
   Preset,
   RoundResponse,
@@ -54,20 +53,6 @@ export async function savePreset(contextId: string, label?: string): Promise<Pre
   return post<Preset>('/api/presets', { contextId, label });
 }
 
-export async function fetchFeaturedArtists(): Promise<FeaturedArtist[]> {
-  return unwrap<FeaturedArtist[]>(await fetch('/api/featured/artists'));
-}
-
-/** Curator only. Returns the whole list back, so the caller need not re-fetch. */
-export async function addFeaturedArtist(artistId: string, depth: 'top' | 'all'): Promise<FeaturedArtist[]> {
-  return post<FeaturedArtist[]>('/api/featured/artists', { artistId, depth });
-}
-
-export async function removeFeaturedArtist(id: string): Promise<FeaturedArtist[]> {
-  const res = await fetch(`/api/featured/artists/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  return unwrap<FeaturedArtist[]>(res);
-}
-
 export async function removePreset(slug: string): Promise<void> {
   await unwrap(await fetch(`/api/presets/${encodeURIComponent(slug)}`, { method: 'DELETE' }));
 }
@@ -113,6 +98,8 @@ export interface Entity {
   name: string;
   subtitle?: string;
   pictureUrl: string | null;
+  /** Artists only: Deezer's follower count, shown to tell same-named artists apart. */
+  fans?: number;
 }
 
 export async function searchEntities(type: 'artist' | 'album', q: string): Promise<Entity[]> {

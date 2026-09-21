@@ -34,16 +34,6 @@ export interface ContextRequest {
   depth?: 'top' | 'all';
 }
 
-/** An artist anyone can play from the Featured tab, curated like a featured playlist. */
-export interface FeaturedArtist {
-  /** Deezer artist id. */
-  id: string;
-  name: string;
-  pictureUrl: string | null;
-  depth: 'top' | 'all';
-  addedAt: string;
-}
-
 export interface ContextResponse {
   contextId: string;
   label: string;

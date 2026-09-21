@@ -1,17 +1,22 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { searchEntities, type Entity } from '../api.ts';
 
+/** 24086838 -> "24.1M followers". Four artists are called Drake; this says which is which. */
+function followers(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M followers`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}K followers`;
+  return `${n} follower${n === 1 ? '' : 's'}`;
+}
+
 interface Props {
   type: 'artist' | 'album';
   busy: boolean;
   onPick: (id: string) => void;
-  /** Curator only: given, each result grows a control for adding it to the Featured tab. */
-  onFeature?: (id: string, name: string) => void;
   /** Rendered above the results — the artist depth toggle lives here. */
   children?: ReactNode;
 }
 
-export function EntitySearch({ type, busy, onPick, onFeature, children }: Props) {
+export function EntitySearch({ type, busy, onPick, children }: Props) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Entity[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -64,17 +69,8 @@ export function EntitySearch({ type, busy, onPick, onFeature, children }: Props)
               {e.pictureUrl ? <img src={e.pictureUrl} alt="" width={40} height={40} /> : <span className="ph" />}
               <span className="e-name">{e.name}</span>
               {e.subtitle && <span className="e-sub">{e.subtitle}</span>}
+              {e.fans !== undefined && <span className="e-sub">{followers(e.fans)}</span>}
             </button>
-            {onFeature && (
-              <button
-                type="button"
-                className="link feature-add"
-                title={`Add ${e.name} to the Featured tab for everyone`}
-                onClick={() => onFeature(String(e.id), e.name)}
-              >
-                + featured
-              </button>
-            )}
           </li>
         ))}
       </ul>

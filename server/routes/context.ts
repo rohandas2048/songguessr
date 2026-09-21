@@ -7,7 +7,6 @@ import {
   artistCatalog,
   artistTopTracks,
   chartTracks,
-  getArtist,
   listGenres,
   searchAlbums,
   searchArtists,
@@ -23,11 +22,6 @@ import {
 } from '../spotify.ts';
 import { fetchPlaylistEmbed } from '../spotifyEmbed.ts';
 import { checkCuratorPassword, curatorConfigured, requireCurator } from '../curator.ts';
-import {
-  addFeaturedArtist,
-  listFeaturedArtists,
-  removeFeaturedArtist,
-} from '../featuredArtists.ts';
 import { deletePreset, listPresets, loadPreset, presetWritesAllowed, savePreset } from '../presets.ts';
 import { sameOriginOnly } from '../security.ts';
 import { getContext, putContext } from '../store.ts';
@@ -128,64 +122,6 @@ contextRouter.delete('/presets/:slug', sameOriginOnly, requireCurator, async (re
       return;
     }
     res.json({ removed: slug });
-  } catch (err) {
-    next(err);
-  }
-});
-
-/** The curated artist list. Public to read, like featured playlists. */
-contextRouter.get('/featured/artists', async (_req, res, next) => {
-  try {
-    res.json(await listFeaturedArtists());
-  } catch (err) {
-    next(err);
-  }
-});
-
-/**
- * Adds an artist to the Featured tab. The name and picture are looked up here rather
- * than taken from the request, so the stored entry is Deezer's answer for that id and
- * not whatever a caller chose to send.
- */
-contextRouter.post('/featured/artists', sameOriginOnly, requireCurator, async (req, res, next) => {
-  if (!presetWritesAllowed()) {
-    res.status(403).json({ error: 'editing the featured list is disabled on this server' });
-    return;
-  }
-  const { artistId, depth } = req.body as { artistId?: string; depth?: 'top' | 'all' };
-  if (typeof artistId !== 'string' || !/^\d{1,20}$/.test(artistId)) {
-    res.status(400).json({ error: 'expected a Deezer artist id' });
-    return;
-  }
-  try {
-    const artist = await getArtist(artistId);
-    if (!artist) {
-      res.status(404).json({ error: 'no such artist on Deezer' });
-      return;
-    }
-    res.json(
-      await addFeaturedArtist(
-        { id: String(artist.id), name: artist.name, pictureUrl: artist.pictureUrl },
-        depth === 'all' ? 'all' : 'top',
-      ),
-    );
-  } catch (err) {
-    next(err);
-  }
-});
-
-contextRouter.delete('/featured/artists/:id', sameOriginOnly, requireCurator, async (req, res, next) => {
-  if (!presetWritesAllowed()) {
-    res.status(403).json({ error: 'editing the featured list is disabled on this server' });
-    return;
-  }
-  try {
-    const removed = await removeFeaturedArtist(String(req.params.id));
-    if (!removed) {
-      res.status(404).json({ error: 'that artist is not on the featured list' });
-      return;
-    }
-    res.json(await listFeaturedArtists());
   } catch (err) {
     next(err);
   }
