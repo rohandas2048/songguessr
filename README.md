@@ -201,11 +201,47 @@ src/game/search.ts     dropdown ranking
 - [x] Phase 3 — random start point, OAuth for full-length playlists
 - [ ] Phase 4 — share card, history, keyboard polish
 
+## Artist depth
+
+Artist mode offers two pools. **Top tracks** is Deezer's `/artist/{id}/top`, capped at 100.
+**Full discography** walks `/artist/{id}/albums` and reads each tracklist, which lifts the
+pool past 100 — Radiohead go from 100 to 167, Taylor Swift to 252.
+
+Connecting Spotify does nothing for this, and cannot: the token carries no scopes, and
+Spotify's artist endpoints expose no playable audio anyway. Deezer is the audio source, so
+the catalogue comes from Deezer.
+
+The walk is opinionated, because a raw discography makes a poor guessing pool:
+
+- Studio albums first, then EPs and singles, compilations last, and live records after
+  their studio equivalents — the first version of a song to arrive is the one kept, so
+  players hear the recording they know.
+- Variations fold onto one entry: "Creep", "Creep (Acoustic)", "Creep - Remastered 2009"
+  and "Creep (Live at Glastonbury)" are one guessable song, and keeping them apart would
+  fill the dropdown with answers nobody can tell apart.
+- Tracks credited to another artist are dropped, so a compilation does not smuggle in
+  other people's songs.
+- Bounded at 60 albums and 500 tracks.
+
+Every Deezer request now passes through one token bucket (40 requests, refilling at 8/s).
+Deezer allows about 50 per 5 seconds and answers a burst with `Quota limit exceeded` **in a
+200 body**, so without pacing a catalogue walk or a long playlist resolution loses tracks
+silently. A quota error that slips through is retried twice with backoff.
+
 ## Featured playlists (presets)
+
+The Featured tab has two halves: **Playlists**, which are snapshots, and **Artists**, which
+are just a curated list of ids.
 
 A loaded pool can be snapshotted to `data/presets/<slug>.json` and then played by anyone,
 with no Spotify connection and no 100-track cap — it becomes a tab alongside Genre, Artist
 and Album.
+
+Featured **artists** store no tracks at all, only `{id, name, pictureUrl, depth}` in
+`data/featured-artists.json`. A playlist snapshot has to be frozen, because the Spotify
+playlist behind it can change or go private; an artist's catalogue is fetched at play time,
+so the file stays a few hundred bytes and never goes stale. The depth chosen when the
+artist was added is the depth everyone plays them at.
 
 Snapshots are durable because of how clips are stored: a Deezer clip keeps only its track id
 (its preview URLs are signed and expire in ~14 minutes, so they are re-resolved at play
@@ -225,10 +261,16 @@ account: there is exactly one curator, whoever runs the instance.
    result lives on the session cookie, so the password crosses the wire a single time per
    browser. **Lock** clears it.
 3. Unlocked, you get **save as featured** in the game header (load the playlist first —
-   connected, if it runs past 100 tracks) and a **remove** link under each featured tile.
-   Removal deletes the snapshot file, so it asks for confirmation.
+   connected, if it runs past 100 tracks), a **+ featured** control beside every result on
+   the Artist tab, and a **remove** link under each featured tile. Removal deletes the
+   snapshot file, so it asks for confirmation.
+4. An artist is added at whatever the discography toggle is set to at the time, and
+   re-adding the same artist updates that rather than duplicating them. The name and
+   picture are looked up server-side from the id, so a stored entry is always Deezer's
+   answer rather than whatever a caller chose to send.
 
-Commit the resulting JSON if you want it to ship with the app. That matters on a host with
+Commit the resulting JSON — `data/presets/*.json`, `data/featured-artists.json` — if you
+want it to ship with the app. That matters on a host with
 no persistent disk, such as Render's free plan: a preset saved on the running service is
 gone at the next deploy or wake-up, while one committed to `data/presets/` is in the image.
 
@@ -257,7 +299,7 @@ npm test        # the suite
 npm run check   # typecheck + suite
 ```
 
-36 tests, no network: a fake Spotify is installed over `globalThis.fetch`, so the suite is
+51 tests, no network: a fake Spotify is installed over `globalThis.fetch`, so the suite is
 deterministic and asserts our behaviour rather than a vendor's. The isolation tests drive the
 real OAuth round trip through two separate cookie jars.
 
@@ -266,7 +308,7 @@ Spotify account**. That was checked by mutation: reintroducing the old shared-to
 fails 6 of the 9 isolation tests, so they have teeth rather than merely passing. Coverage:
 per-session tokens, cookie flags, forged cookies, OAuth state binding and replay,
 session-scoped contexts and rounds, minimal OAuth scope, preset slug safety and path-traversal
-refusal, the curator password gate (wrong passwords, non-string passwords, cross-origin
+refusal, featured-artist ids and malformed stores, the curator password gate (wrong passwords, non-string passwords, cross-origin
 unlocks, brute-force throttling, per-session isolation of the unlock), cross-origin logout, security headers, rate limiting, SSRF
 pinning, error sanitization, eviction, and the guess box across Mandarin, Cyrillic, Hangul,
 Japanese kana and full-width Latin.

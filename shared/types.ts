@@ -27,6 +27,21 @@ export interface ContextRequest {
   mode: ContextMode;
   /** Deezer genre id for 'genre'; a preset slug for 'preset'; a Spotify URL or id otherwise. */
   value: string;
+  /**
+   * Artist mode only. 'top' is the artist's 100 most popular tracks; 'all' walks their
+   * discography instead, which lifts the pool past 100 at the cost of a slower build.
+   */
+  depth?: 'top' | 'all';
+}
+
+/** An artist anyone can play from the Featured tab, curated like a featured playlist. */
+export interface FeaturedArtist {
+  /** Deezer artist id. */
+  id: string;
+  name: string;
+  pictureUrl: string | null;
+  depth: 'top' | 'all';
+  addedAt: string;
 }
 
 export interface ContextResponse {

@@ -18,12 +18,12 @@ export function App() {
   const options = useMemo(() => ({ trimSilence, randomStart }), [trimSilence, randomStart]);
   const { state, nextRound, replay, stop, guess } = useGame(context, options);
 
-  const start = useCallback(async (mode: ContextMode, value: string) => {
+  const start = useCallback(async (mode: ContextMode, value: string, depth?: 'top' | 'all') => {
     setBuilding(true);
     setSetupError(null);
     try {
       setSaved(null);
-      setContext(await buildContext({ mode, value }));
+      setContext(await buildContext({ mode, value, depth }));
     } catch (err) {
       setSetupError(err instanceof Error ? err.message : 'could not build that context');
     } finally {
@@ -78,6 +78,8 @@ export function App() {
   const { phase, ladder, rung, attempts, answer, won, busy } = state;
   const seconds = ladder[Math.min(rung, ladder.length - 1)];
   const remaining = ladder.length - attempts.length;
+  // The rung the winning guess was made on: how little of the song it took.
+  const solvedAt = won ? ladder[attempts.length - 1] : undefined;
 
   return (
     <div className="game">
@@ -142,7 +144,11 @@ export function App() {
 
       {phase === 'done' && answer ? (
         <div className={`result ${won ? 'won' : 'lost'}`}>
-          <h2>{won ? `Got it in ${attempts.length}` : 'Out of tries'}</h2>
+          <h2>
+            {won && solvedAt !== undefined
+              ? `Got it in ${solvedAt} second${solvedAt === 1 ? '' : 's'}`
+              : 'Out of tries'}
+          </h2>
           <div className="answer">
             {answer.artworkUrl && <img src={answer.artworkUrl} alt="" width={96} height={96} />}
             <div>

@@ -1,13 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { searchEntities, type Entity } from '../api.ts';
 
 interface Props {
   type: 'artist' | 'album';
   busy: boolean;
   onPick: (id: string) => void;
+  /** Curator only: given, each result grows a control for adding it to the Featured tab. */
+  onFeature?: (id: string, name: string) => void;
+  /** Rendered above the results — the artist depth toggle lives here. */
+  children?: ReactNode;
 }
 
-export function EntitySearch({ type, busy, onPick }: Props) {
+export function EntitySearch({ type, busy, onPick, onFeature, children }: Props) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Entity[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +50,7 @@ export function EntitySearch({ type, busy, onPick }: Props) {
           if (e.key === 'Enter' && pastedLink) onPick(query.trim());
         }}
       />
+      {children}
       {error && <p className="error">{error}</p>}
       {pastedLink && (
         <button type="button" className="primary link-go" disabled={busy} onClick={() => onPick(query.trim())}>
@@ -60,6 +65,16 @@ export function EntitySearch({ type, busy, onPick }: Props) {
               <span className="e-name">{e.name}</span>
               {e.subtitle && <span className="e-sub">{e.subtitle}</span>}
             </button>
+            {onFeature && (
+              <button
+                type="button"
+                className="link feature-add"
+                title={`Add ${e.name} to the Featured tab for everyone`}
+                onClick={() => onFeature(String(e.id), e.name)}
+              >
+                + featured
+              </button>
+            )}
           </li>
         ))}
       </ul>

@@ -1,6 +1,7 @@
 import type {
   ContextRequest,
   ContextResponse,
+  FeaturedArtist,
   GuessResponse,
   Preset,
   RoundResponse,
@@ -51,6 +52,20 @@ export async function fetchPresets(): Promise<Preset[]> {
 
 export async function savePreset(contextId: string, label?: string): Promise<Preset> {
   return post<Preset>('/api/presets', { contextId, label });
+}
+
+export async function fetchFeaturedArtists(): Promise<FeaturedArtist[]> {
+  return unwrap<FeaturedArtist[]>(await fetch('/api/featured/artists'));
+}
+
+/** Curator only. Returns the whole list back, so the caller need not re-fetch. */
+export async function addFeaturedArtist(artistId: string, depth: 'top' | 'all'): Promise<FeaturedArtist[]> {
+  return post<FeaturedArtist[]>('/api/featured/artists', { artistId, depth });
+}
+
+export async function removeFeaturedArtist(id: string): Promise<FeaturedArtist[]> {
+  const res = await fetch(`/api/featured/artists/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  return unwrap<FeaturedArtist[]>(res);
 }
 
 export async function removePreset(slug: string): Promise<void> {
